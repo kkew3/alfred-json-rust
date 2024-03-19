@@ -7,3 +7,4 @@ description = "A library for writing Alfred(>=5) workflows, inspired by lilyball
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+serde_json = "1.0"
