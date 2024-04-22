@@ -129,6 +129,16 @@ impl ModifiersComb {
             keys: uniq.into_iter().collect(),
         })
     }
+
+    /// New modifier key combination with no check on empty sequence or
+    /// duplicate modifier keys.
+    pub fn new_comb_unchecked<I: IntoIterator<Item = ModifierType>>(
+        modifiers: I,
+    ) -> Self {
+        Self {
+            keys: modifiers.into_iter().collect(),
+        }
+    }
 }
 
 impl TryFrom<&str> for ModifiersComb {
