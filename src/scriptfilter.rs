@@ -13,11 +13,11 @@
 
 use serde_json::{json, Value};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum ModifierType {
     /// Command key
     Command,
@@ -31,126 +31,107 @@ pub enum ModifierType {
     Fn,
 }
 
-impl fmt::Display for ModifierType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let str = match &self {
+impl AsRef<str> for ModifierType {
+    fn as_ref(&self) -> &str {
+        match &self {
             Self::Command => "cmd",
             Self::Option => "alt",
             Self::Control => "ctrl",
             Self::Shift => "shift",
             Self::Fn => "fn",
-        };
+        }
+    }
+}
+
+impl TryFrom<&str> for ModifierType {
+    type Error = ();
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if value == "cmd" {
+            Ok(Self::Command)
+        } else if value == "alt" {
+            Ok(Self::Option)
+        } else if value == "ctrl" {
+            Ok(Self::Control)
+        } else if value == "shift" {
+            Ok(Self::Shift)
+        } else if value == "fn" {
+            Ok(Self::Fn)
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl fmt::Display for ModifierType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str: &str = self.as_ref();
         write!(f, "{}", str)
     }
 }
 
-#[derive(Eq, PartialEq, Hash)]
-enum ModifiersCombVariants {
-    One(ModifierType),
-    Two(ModifierType, ModifierType),
-    Three(ModifierType, ModifierType, ModifierType),
-    Four(ModifierType, ModifierType, ModifierType, ModifierType),
-    Five(
-        ModifierType,
-        ModifierType,
-        ModifierType,
-        ModifierType,
-        ModifierType,
-    ),
-}
-
 /// A modifier key or a combination of modifier keys.
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Debug)]
 pub struct ModifiersComb {
-    keys: ModifiersCombVariants,
+    keys: Vec<ModifierType>,
 }
 
 impl fmt::Display for ModifiersComb {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.keys {
-            ModifiersCombVariants::One(m1) => write!(f, "{}", m1),
-            ModifiersCombVariants::Two(m1, m2) => write!(f, "{}+{}", m1, m2),
-            ModifiersCombVariants::Three(m1, m2, m3) => {
-                write!(f, "{}+{}+{}", m1, m2, m3)
-            }
-            ModifiersCombVariants::Four(m1, m2, m3, m4) => {
-                write!(f, "{}+{}+{}+{}", m1, m2, m3, m4)
-            }
-            ModifiersCombVariants::Five(m1, m2, m3, m4, m5) => {
-                write!(f, "{}+{}+{}+{}+{}", m1, m2, m3, m4, m5)
-            }
+        let mut repr = String::new();
+        repr.push_str(self.keys.get(0).unwrap().as_ref());
+        for mf in &self.keys[1..] {
+            repr.push('+');
+            repr.push_str(mf.as_ref());
         }
+        write!(f, "{}", repr)
     }
 }
-
-/// Indicate that there's duplicate in a combination of modifier keys.
-#[derive(Debug)]
-pub struct DuplicateModifierTypeError;
 
 impl ModifiersComb {
     /// This is simply a wrapper over `ModifierType`.
     pub fn new(m: ModifierType) -> Self {
-        Self {
-            keys: ModifiersCombVariants::One(m),
-        }
+        Self { keys: vec![m] }
     }
 
-    /// New modifier key combination of two different modifier keys.
-    pub fn new_comb(
-        m1: ModifierType,
-        m2: ModifierType,
-    ) -> Result<Self, DuplicateModifierTypeError> {
-        if m1 == m2 {
-            return Err(DuplicateModifierTypeError);
+    /// New modifier key combination of one or more different modifier keys.
+    /// Panic if an empty `modifiers` is provided. Return `Err` if any pair of
+    /// modifier keys are the same.
+    pub fn new_comb<I: IntoIterator<Item = ModifierType>>(
+        modifiers: I,
+    ) -> Result<Self, ()> {
+        let mut uniq = HashSet::new();
+        for mf in modifiers.into_iter() {
+            if !uniq.insert(mf) {
+                return Err(());
+            }
+        }
+        if uniq.is_empty() {
+            panic!("`modifiers` is empty");
         }
         Ok(Self {
-            keys: ModifiersCombVariants::Two(m1, m2),
+            keys: uniq.into_iter().collect(),
         })
     }
+}
 
-    /// New modifier key combination of three different modifier keys.
-    pub fn new_comb3(
-        m1: ModifierType,
-        m2: ModifierType,
-        m3: ModifierType,
-    ) -> Result<Self, DuplicateModifierTypeError> {
-        if m1 == m2 || m2 == m3 {
-            return Err(DuplicateModifierTypeError);
-        }
-        Ok(Self {
-            keys: ModifiersCombVariants::Three(m1, m2, m3),
-        })
-    }
+impl TryFrom<&str> for ModifiersComb {
+    type Error = ();
 
-    /// New modifier key combination of four different modifier keys.
-    pub fn new_comb4(
-        m1: ModifierType,
-        m2: ModifierType,
-        m3: ModifierType,
-        m4: ModifierType,
-    ) -> Result<Self, DuplicateModifierTypeError> {
-        if m1 == m2 || m2 == m3 || m3 == m4 {
-            return Err(DuplicateModifierTypeError);
+    /// Try constructing `ModifierComb` from string.
+    ///
+    /// For example,
+    ///
+    /// ```
+    /// use alfred_json::scriptfilter::{ModifiersComb, ModifierType};
+    /// let modifiers: ModifiersComb = "cmd+alt".try_into().unwrap();
+    /// ```
+    fn try_from(value: &str) -> Result<ModifiersComb, ()> {
+        let mut modifiers: Vec<ModifierType> = Vec::new();
+        for mf_str in value.split('+') {
+            modifiers.push(mf_str.try_into()?);
         }
-        Ok(Self {
-            keys: ModifiersCombVariants::Four(m1, m2, m3, m4),
-        })
-    }
-
-    /// New modifier key combination of five different modifier keys.
-    pub fn new_comb5(
-        m1: ModifierType,
-        m2: ModifierType,
-        m3: ModifierType,
-        m4: ModifierType,
-        m5: ModifierType,
-    ) -> Result<Self, DuplicateModifierTypeError> {
-        if m1 == m2 || m2 == m3 || m3 == m4 || m4 == m5 {
-            return Err(DuplicateModifierTypeError);
-        }
-        Ok(Self {
-            keys: ModifiersCombVariants::Five(m1, m2, m3, m4, m5),
-        })
+        ModifiersComb::new_comb(modifiers)
     }
 }
 
@@ -995,5 +976,68 @@ impl<'a> ScriptFilterOutputBuilder<'a> {
     /// Return the output built.
     pub fn into_output(self) -> ScriptFilterOutput<'a> {
         self.resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::scriptfilter::{ModifierType, ModifiersComb};
+    use std::collections::HashSet;
+    use std::hash::Hash;
+
+    #[test]
+    fn test_modifiers_comb_display() {
+        let mfc = ModifiersComb::new_comb([
+            ModifierType::Command,
+            ModifierType::Option,
+        ])
+        .unwrap();
+        assert!(vec!["cmd+alt", "alt+cmd"].contains(&mfc.to_string().as_str()))
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_modifiers_comb_new_comb_empty() {
+        ModifiersComb::new_comb([]).unwrap();
+    }
+
+    fn into_hashset<T: Eq + Hash, I: IntoIterator<Item = T>>(
+        iter: I,
+    ) -> HashSet<T> {
+        iter.into_iter().collect()
+    }
+
+    #[test]
+    fn test_modifiers_comb_new_comb() {
+        ModifiersComb::new_comb([
+            ModifierType::Command,
+            ModifierType::Option,
+            ModifierType::Command,
+        ])
+        .unwrap_err();
+        assert_eq!(
+            into_hashset(
+                ModifiersComb::new_comb([
+                    ModifierType::Command,
+                    ModifierType::Option
+                ])
+                .unwrap()
+                .keys
+            ),
+            into_hashset([ModifierType::Command, ModifierType::Option])
+        );
+    }
+
+    #[test]
+    fn test_modifiers_comb_try_from_str() {
+        assert_eq!(
+            ModifiersComb::try_from("cmd").unwrap(),
+            ModifiersComb::new(ModifierType::Command)
+        );
+        assert_eq!(
+            into_hashset(ModifiersComb::try_from("cmd+alt").unwrap().keys),
+            into_hashset([ModifierType::Command, ModifierType::Option])
+        );
+        assert_eq!(ModifiersComb::try_from("xyz"), Err(()));
     }
 }
