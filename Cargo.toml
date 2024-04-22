@@ -1,10 +1,12 @@
 [package]
 name = "alfred-json"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "A library for writing Alfred(>=5) workflows, inspired by lilyball/alfred-rs."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+fzf = []
 
 [dependencies]
 serde_json = "1.0"

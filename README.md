@@ -4,6 +4,10 @@
 
 Heavily inspired by [lilyball/alfred-rs](https://github.com/lilyball/alfred-rs), this crate defines helpers for writing script filters and JSON configs of [Alfred](https://www.alfredapp.com/)(>=5).
 
+## Optional features
+
+- `fzf`: enable fuzzy item filtering by calling locally installed [`fzf`](https://github.com/junegunn/fzf).
+
 ## Example usage
 
 ```rust

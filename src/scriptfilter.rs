@@ -19,6 +19,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 
+#[cfg(feature = "fzf")]
+pub mod fzf;
+
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum ModifierType {
     /// Command key
