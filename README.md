@@ -7,7 +7,7 @@ Heavily inspired by [lilyball/alfred-rs](https://github.com/lilyball/alfred-rs),
 ## Example usage
 
 ```rust
-use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, IntoJson};
+use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, IntoJson};
 fn main() {
     let output = ScriptFilterOutputBuilder::from_items([
         ItemBuilder::new("Item 1").subtitle("subtitle").into_item(),

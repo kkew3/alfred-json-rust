@@ -4,7 +4,7 @@
 //!
 //! ```
 //! use serde_json::Value;
-//! use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput};
+//! use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput};
 //! let output: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
 //!     ItemBuilder::new("Item 1").subtitle("subtitle").into(),
 //!     ItemBuilder::new("Item 2").valid(false).into(),
@@ -77,14 +77,14 @@ impl fmt::Display for ModifierType {
 /// Example 1:
 ///
 /// ```
-/// use alfred_json::scriptfilter::ModifiersComb;
+/// use alfred_json::ModifiersComb;
 /// let mc = ModifiersComb::try_from("cmd+alt").unwrap();
 /// ```
 ///
 /// Example 2:
 ///
 /// ```
-/// use alfred_json::scriptfilter::{ModifiersComb, ModifierType};
+/// use alfred_json::{ModifiersComb, ModifierType};
 /// let mc = ModifiersComb::new_comb([ModifierType::Command, ModifierType::Option]).unwrap();
 /// ```
 #[derive(Eq, PartialEq, Hash, Debug)]
@@ -149,7 +149,7 @@ impl TryFrom<&str> for ModifiersComb {
     /// For example,
     ///
     /// ```
-    /// use alfred_json::scriptfilter::{ModifiersComb, ModifierType};
+    /// use alfred_json::{ModifiersComb, ModifierType};
     /// let modifiers: ModifiersComb = "cmd+alt".try_into().unwrap();
     /// ```
     fn try_from(value: &str) -> Result<ModifiersComb, ()> {
@@ -165,7 +165,7 @@ impl TryFrom<&str> for ModifiersComb {
 /// may write:
 ///
 /// ```
-/// use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput, IntoJson};
+/// use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput, IntoJson};
 /// let output: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
 ///     ItemBuilder::new("Item 1").subtitle("subtitle").into(),
 ///     ItemBuilder::new("Item 2").valid(false).into(),
@@ -338,7 +338,7 @@ impl<'a> From<ArgBuilder<'a>> for Arg<'a> {
 ///
 /// ```
 /// use std::collections::HashMap;
-/// use alfred_json::scriptfilter::VariablesBuilder;
+/// use alfred_json::VariablesBuilder;
 /// let variables: HashMap<_, _> = VariablesBuilder::from([
 ///     ("hello", "world"),
 ///     ("foo", "bar"),
@@ -349,7 +349,7 @@ impl<'a> From<ArgBuilder<'a>> for Arg<'a> {
 ///
 /// ```
 /// use std::collections::HashMap;
-/// use alfred_json::scriptfilter::VariablesBuilder;
+/// use alfred_json::VariablesBuilder;
 /// let variables: HashMap<_, _> = VariablesBuilder::new()
 ///     .variable("hello", "world")
 ///     .variable("foo", "bar".to_string())
@@ -1013,7 +1013,7 @@ impl<'a> From<ScriptFilterOutput<'a>> for Value {
 /// Example:
 ///
 /// ```
-/// use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutput, ScriptFilterOutputBuilder};
+/// use alfred_json::{ItemBuilder, ScriptFilterOutput, ScriptFilterOutputBuilder};
 /// let sf: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
 ///     ItemBuilder::new("foo").into(),
 ///     ItemBuilder::new("bar").into(),
@@ -1121,7 +1121,7 @@ impl<'a> From<JsonConfig<'a>> for Value {
 /// Example:
 ///
 /// ```
-/// use alfred_json::scriptfilter::{ArgBuilder, JsonConfig, JsonConfigBuilder};
+/// use alfred_json::{ArgBuilder, JsonConfig, JsonConfigBuilder};
 /// let config: JsonConfig = JsonConfigBuilder::new()
 ///     .arg(ArgBuilder::one("foo").into())
 ///     .into();
