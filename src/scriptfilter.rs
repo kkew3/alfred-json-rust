@@ -3,13 +3,11 @@
 //! Example:
 //!
 //! ```
-//! use serde_json::Value;
-//! use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput};
-//! let output: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
-//!     ItemBuilder::new("Item 1").subtitle("subtitle").into(),
-//!     ItemBuilder::new("Item 2").valid(false).into(),
-//! ]).into();
-//! let output: Value = output.into();
+//! use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, Builder, IntoJson};
+//! let output = ScriptFilterOutputBuilder::from([
+//!     ItemBuilder::new("Item 1").subtitle("subtitle").into_output(),
+//!     ItemBuilder::new("Item 2").valid(false).into_output(),
+//! ]).into_output().into_json();
 //! println!("{}", output);
 //! ```
 
@@ -164,8 +162,7 @@ impl TryFrom<&str> for ModifiersComb {
     }
 }
 
-/// A convenient trait such that, instead of the style in the mod doc, users
-/// may write:
+/// Make life easier with this trait:
 ///
 /// ```
 /// use alfred_json::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput, IntoJson};
@@ -183,6 +180,22 @@ pub trait IntoJson: Into<Value> {
 }
 
 impl<T: Into<Value>> IntoJson for T {}
+
+/// Make life easier with this trait:
+///
+/// ```
+/// use alfred_json::{IconBuilder, Builder};
+/// // Don't need type annotation on `icon`:
+/// let icon = IconBuilder::path("/path/to/icon").into_output();
+/// ```
+pub trait Builder where Self: Sized {
+    type Output: From<Self>;
+    
+    /// Get the built object.
+    fn into_output(self) -> Self::Output {
+        self.into()
+    }
+}
 
 /// Design choice: Why to use `String` in the key position? Because
 /// `serde_json::Map` requires `String` in the key position. Converting to
@@ -226,6 +239,10 @@ impl<'a> From<Icon<'a>> for Value {
 /// Builder for an `Icon` object.
 pub struct IconBuilder<'a> {
     icon: Icon<'a>,
+}
+
+impl<'a> Builder for IconBuilder<'a> {
+    type Output = Icon<'a>;
 }
 
 impl<'a> IconBuilder<'a> {
@@ -307,6 +324,10 @@ pub struct ArgBuilder<'a> {
     arg: Arg<'a>,
 }
 
+impl<'a> Builder for ArgBuilder<'a> {
+    type Output = Arg<'a>;
+}
+
 impl<'a> ArgBuilder<'a> {
     /// One argument.
     pub fn one<S: Into<Cow<'a, str>>>(arg: S) -> Self {
@@ -359,6 +380,10 @@ impl<'a> From<ArgBuilder<'a>> for Arg<'a> {
 ///     .into();
 pub struct VariablesBuilder<'a> {
     variables: Variables<'a>,
+}
+
+impl<'a> Builder for VariablesBuilder<'a> {
+    type Output = Variables<'a>;
 }
 
 impl<'a, K, V, I> From<I> for VariablesBuilder<'a>
@@ -502,6 +527,10 @@ pub struct ModifierDataBuilder<'a> {
     data: ModifierData<'a>,
 }
 
+impl<'a> Builder for ModifierDataBuilder<'a> {
+    type Output = ModifierData<'a>;
+}
+
 impl<'a> From<ModifierDataBuilder<'a>> for ModifierData<'a> {
     /// Return the data built.
     fn from(value: ModifierDataBuilder<'a>) -> Self {
@@ -591,6 +620,10 @@ pub struct TypedActionBuilder<'a> {
     auto: Option<Arg<'a>>,
 }
 
+impl<'a> Builder for TypedActionBuilder<'a> {
+    type Output = Action<'a>;
+}
+
 impl<'a> From<TypedActionBuilder<'a>> for Action<'a> {
     /// Return the action object built.
     fn from(value: TypedActionBuilder<'a>) -> Self {
@@ -656,6 +689,10 @@ impl<'a> From<Text<'a>> for Value {
 /// Builder for a `Text` object.
 pub struct TextBuilder<'a> {
     text: Text<'a>,
+}
+
+impl<'a> Builder for TextBuilder<'a> {
+    type Output = Text<'a>;
 }
 
 impl<'a> TextBuilder<'a> {
@@ -774,6 +811,10 @@ impl<'a> From<Item<'a>> for Value {
 /// Builder for an Item.
 pub struct ItemBuilder<'a> {
     item: Item<'a>,
+}
+
+impl<'a> Builder for ItemBuilder<'a> {
+    type Output = Item<'a>;
 }
 
 impl<'a> From<ItemBuilder<'a>> for Item<'a> {
@@ -1026,6 +1067,10 @@ pub struct ScriptFilterOutputBuilder<'a> {
     resp: ScriptFilterOutput<'a>,
 }
 
+impl<'a> Builder for ScriptFilterOutputBuilder<'a> {
+    type Output = ScriptFilterOutput<'a>;
+}
+
 impl<'a> From<ScriptFilterOutputBuilder<'a>> for ScriptFilterOutput<'a> {
     /// Return the output built.
     fn from(value: ScriptFilterOutputBuilder<'a>) -> Self {
@@ -1131,6 +1176,10 @@ impl<'a> From<JsonConfig<'a>> for Value {
 /// ```
 pub struct JsonConfigBuilder<'a> {
     config: JsonConfig<'a>,
+}
+
+impl<'a> Builder for JsonConfigBuilder<'a> {
+    type Output = JsonConfig<'a>;
 }
 
 impl<'a> From<JsonConfigBuilder<'a>> for JsonConfig<'a> {
