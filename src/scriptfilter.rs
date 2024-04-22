@@ -3,12 +3,14 @@
 //! Example:
 //!
 //! ```
-//! use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, IntoJson};
-//! let output = ScriptFilterOutputBuilder::from_items([
-//!     ItemBuilder::new("Item 1").subtitle("subtitle").into_item(),
-//!     ItemBuilder::new("Item 2").valid(false).into_item(),
-//! ]).into_output();
-//! println!("{}", output.into_json());
+//! use serde_json::Value;
+//! use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput};
+//! let output: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
+//!     ItemBuilder::new("Item 1").subtitle("subtitle").into(),
+//!     ItemBuilder::new("Item 2").valid(false).into(),
+//! ]).into();
+//! let output: Value = output.into();
+//! println!("{}", output);
 //! ```
 
 use serde_json::{json, Value};
@@ -71,6 +73,20 @@ impl fmt::Display for ModifierType {
 }
 
 /// A modifier key or a combination of modifier keys.
+///
+/// Example 1:
+///
+/// ```
+/// use alfred_json::scriptfilter::ModifiersComb;
+/// let mc = ModifiersComb::try_from("cmd+alt").unwrap();
+/// ```
+///
+/// Example 2:
+///
+/// ```
+/// use alfred_json::scriptfilter::{ModifiersComb, ModifierType};
+/// let mc = ModifiersComb::new_comb([ModifierType::Command, ModifierType::Option]).unwrap();
+/// ```
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct ModifiersComb {
     keys: Vec<ModifierType>,
@@ -135,15 +151,39 @@ impl TryFrom<&str> for ModifiersComb {
     }
 }
 
-pub trait IntoJson {
-    fn into_json(self) -> Value;
+/// A convenient trait such that, instead of the style in the mod doc, users
+/// may write:
+///
+/// ```
+/// use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutputBuilder, ScriptFilterOutput, IntoJson};
+/// let output: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
+///     ItemBuilder::new("Item 1").subtitle("subtitle").into(),
+///     ItemBuilder::new("Item 2").valid(false).into(),
+/// ]).into();
+/// // One line shorter here:
+/// println!("{}", output.into_json());
+/// ```
+pub trait IntoJson: Into<Value> {
+    fn into_json(self) -> Value {
+        self.into()
+    }
 }
 
-impl<'a> IntoJson for HashMap<Cow<'a, str>, Cow<'a, str>> {
-    fn into_json(self) -> Value {
-        let mut vars = serde_json::Map::with_capacity(self.len());
-        for (key, value) in self.into_iter() {
-            vars.insert(key.into_owned(), json!(value));
+impl<T: Into<Value>> IntoJson for T {}
+
+/// Design choice: Why to use `String` in the key position? Because
+/// `serde_json::Map` requires `String` in the key position. Converting to
+/// `String` is inevitable.
+pub type Variables<'a> = HashMap<String, Cow<'a, str>>;
+
+struct HashMapWrapperVariables<'a>(Variables<'a>);
+
+impl<'a> From<HashMapWrapperVariables<'a>> for Value {
+    fn from(value: HashMapWrapperVariables) -> Self {
+        let value = value.0;
+        let mut vars = serde_json::Map::with_capacity(value.len());
+        for (key, value) in value.into_iter() {
+            vars.insert(key, json!(value));
         }
         Value::Object(vars)
     }
@@ -159,12 +199,13 @@ pub enum Icon<'a> {
     FileType(Cow<'a, str>),
 }
 
-impl<'a> IntoJson for Icon<'a> {
-    fn into_json(self) -> Value {
-        match self {
-            Self::Path(p) => json!({"path": p}),
-            Self::File(p) => json!({"type": "fileicon", "path": p}),
-            Self::FileType(uti) => json!({"type": "filetype", "path": uti}),
+impl<'a> From<Icon<'a>> for Value {
+    fn from(value: Icon<'a>) -> Self {
+        use Icon::*;
+        match value {
+            Path(p) => json!({"path": p}),
+            File(p) => json!({"type": "fileicon", "path": p}),
+            FileType(uti) => json!({"type": "filetype", "path": uti}),
         }
     }
 }
@@ -195,10 +236,12 @@ impl<'a> IconBuilder<'a> {
             icon: Icon::FileType(uti.into()),
         }
     }
+}
 
+impl<'a> From<IconBuilder<'a>> for Icon<'a> {
     /// Return the icon built.
-    pub fn into_icon(self) -> Icon<'a> {
-        self.icon
+    fn from(value: IconBuilder<'a>) -> Self {
+        value.icon
     }
 }
 
@@ -217,12 +260,13 @@ pub enum ItemType {
     FileSkipCheck,
 }
 
-impl IntoJson for ItemType {
-    fn into_json(self) -> Value {
-        match self {
-            Self::Default => json!("default"),
-            Self::File => json!("file"),
-            Self::FileSkipCheck => json!("file:skipcheck"),
+impl From<ItemType> for Value {
+    fn from(value: ItemType) -> Self {
+        use ItemType::*;
+        match value {
+            Default => json!("default"),
+            File => json!("file"),
+            FileSkipCheck => json!("file:skipcheck"),
         }
     }
 }
@@ -233,11 +277,12 @@ pub enum Arg<'a> {
     Many(Vec<Cow<'a, str>>),
 }
 
-impl<'a> IntoJson for Arg<'a> {
-    fn into_json(self) -> Value {
-        match self {
-            Self::One(a) => json!(a),
-            Self::Many(args) => {
+impl<'a> From<Arg<'a>> for Value {
+    fn from(value: Arg<'a>) -> Self {
+        use Arg::*;
+        match value {
+            One(a) => json!(a),
+            Many(args) => {
                 Value::Array(args.into_iter().map(|a| json!(a)).collect())
             }
         }
@@ -267,16 +312,55 @@ impl<'a> ArgBuilder<'a> {
             arg: Arg::Many(args.into_iter().map(Into::into).collect()),
         }
     }
+}
 
+impl<'a> From<ArgBuilder<'a>> for Arg<'a> {
     /// Return the arg built.
-    pub fn into_arg(self) -> Arg<'a> {
-        self.arg
+    fn from(value: ArgBuilder<'a>) -> Self {
+        value.arg
     }
 }
 
-/// Builder for a collection of variables.
+/// Builder for a collection of variables. Merely a wrapper over `HashMap`
+/// that facilitates automatic `Into<_>` conversion.
+///
+/// Example 1:
+///
+/// ```
+/// use std::collections::HashMap;
+/// use alfred_json::scriptfilter::VariablesBuilder;
+/// let variables: HashMap<_, _> = VariablesBuilder::from([
+///     ("hello", "world"),
+///     ("foo", "bar"),
+/// ]).into();
+/// ```
+///
+/// Example 2:
+///
+/// ```
+/// use std::collections::HashMap;
+/// use alfred_json::scriptfilter::VariablesBuilder;
+/// let variables: HashMap<_, _> = VariablesBuilder::new()
+///     .variable("hello", "world")
+///     .variable("foo", "bar".to_string())
+///     .into();
 pub struct VariablesBuilder<'a> {
-    variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
+    variables: Variables<'a>,
+}
+
+impl<'a, K, V, I> From<I> for VariablesBuilder<'a>
+where
+    K: Into<String>,
+    V: Into<Cow<'a, str>>,
+    I: IntoIterator<Item = (K, V)>,
+{
+    fn from(value: I) -> Self {
+        Self {
+            variables: HashMap::from_iter(
+                value.into_iter().map(|(k, v)| (k.into(), v.into())),
+            ),
+        }
+    }
 }
 
 impl<'a> VariablesBuilder<'a> {
@@ -286,27 +370,18 @@ impl<'a> VariablesBuilder<'a> {
         }
     }
 
-    pub fn from<K, V, I>(kv_pairs: I) -> Self
+    pub fn variable<K, V>(mut self, key: K, value: V) -> Self
     where
-        K: Into<Cow<'a, str>>,
+        K: Into<String>,
         V: Into<Cow<'a, str>>,
-        I: IntoIterator<Item = (K, V)>,
     {
-        Self {
-            variables: HashMap::from_iter(
-                kv_pairs.into_iter().map(|(k, v)| (k.into(), v.into())),
-            ),
-        }
-    }
-
-    /// Return the variables built.
-    pub fn into_variables(self) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
-        self.variables
+        self.add_variable(key, value);
+        self
     }
 
     pub fn add_variable<K, V>(&mut self, key: K, value: V)
     where
-        K: Into<Cow<'a, str>>,
+        K: Into<String>,
         V: Into<Cow<'a, str>>,
     {
         self.variables.insert(key.into(), value.into());
@@ -314,17 +389,24 @@ impl<'a> VariablesBuilder<'a> {
 
     pub fn set_variables<K, V, I>(&mut self, kv_pairs: I)
     where
-        K: Into<Cow<'a, str>>,
+        K: Into<String>,
         V: Into<Cow<'a, str>>,
         I: IntoIterator<Item = (K, V)>,
     {
-        self.variables.clear();
-        self.variables
-            .extend(kv_pairs.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self.variables = kv_pairs
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
     }
 
     pub fn unset_variable(&mut self) {
         self.variables.clear();
+    }
+}
+
+impl<'a> From<VariablesBuilder<'a>> for Variables<'a> {
+    fn from(value: VariablesBuilder<'a>) -> Self {
+        value.variables
     }
 }
 
@@ -335,26 +417,29 @@ pub struct ModifierData<'a> {
     arg: Option<Arg<'a>>,
     valid: Option<bool>,
     icon: Option<Icon<'a>>,
-    variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
+    variables: Variables<'a>,
 }
 
-impl<'a> IntoJson for ModifierData<'a> {
-    fn into_json(self) -> Value {
+impl<'a> From<ModifierData<'a>> for Value {
+    fn from(value: ModifierData<'a>) -> Self {
         let mut map = serde_json::Map::new();
-        if let Some(subtitle) = self.subtitle {
+        if let Some(subtitle) = value.subtitle {
             map.insert("subtitle".to_string(), json!(subtitle));
         }
-        if let Some(arg) = self.arg {
-            map.insert("arg".to_string(), arg.into_json());
+        if let Some(arg) = value.arg {
+            map.insert("arg".to_string(), arg.into());
         }
-        if let Some(valid) = self.valid {
+        if let Some(valid) = value.valid {
             map.insert("valid".to_string(), json!(valid));
         }
-        if let Some(icon) = self.icon {
-            map.insert("icon".to_string(), icon.into_json());
+        if let Some(icon) = value.icon {
+            map.insert("icon".to_string(), icon.into());
         }
-        if !self.variables.is_empty() {
-            map.insert("variables".to_string(), self.variables.into_json());
+        if !value.variables.is_empty() {
+            map.insert(
+                "variables".to_string(),
+                HashMapWrapperVariables(value.variables).into(),
+            );
         }
 
         Value::Object(map)
@@ -394,12 +479,8 @@ impl<'a> ModifierData<'a> {
         self.icon = None;
     }
 
-    pub fn set_variables(
-        &mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) {
-        self.variables.clear();
-        self.variables.extend(variables);
+    pub fn set_variables(&mut self, variables: Variables<'a>) {
+        self.variables = variables;
     }
 }
 
@@ -408,16 +489,18 @@ pub struct ModifierDataBuilder<'a> {
     data: ModifierData<'a>,
 }
 
+impl<'a> From<ModifierDataBuilder<'a>> for ModifierData<'a> {
+    /// Return the data built.
+    fn from(value: ModifierDataBuilder<'a>) -> Self {
+        value.data
+    }
+}
+
 impl<'a> ModifierDataBuilder<'a> {
     pub fn new() -> Self {
         Self {
             data: Default::default(),
         }
-    }
-
-    /// Return the data built.
-    pub fn into_modifier_data(self) -> ModifierData<'a> {
-        self.data
     }
 
     pub fn subtitle<S: Into<Cow<'a, str>>>(mut self, subtitle: S) -> Self {
@@ -440,10 +523,7 @@ impl<'a> ModifierDataBuilder<'a> {
         self
     }
 
-    pub fn variables<K, V, I>(
-        mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) -> Self {
+    pub fn variables(mut self, variables: Variables<'a>) -> Self {
         self.data.set_variables(variables);
         self
     }
@@ -460,11 +540,12 @@ pub enum Action<'a> {
     },
 }
 
-impl<'a> IntoJson for Action<'a> {
-    fn into_json(self) -> Value {
-        match self {
-            Self::Simple(a) => a.into_json(),
-            Self::Typed {
+impl<'a> From<Action<'a>> for Value {
+    fn from(value: Action<'a>) -> Self {
+        use Action::*;
+        match value {
+            Simple(a) => a.into(),
+            Typed {
                 text,
                 url,
                 file,
@@ -472,16 +553,16 @@ impl<'a> IntoJson for Action<'a> {
             } => {
                 let mut obj = serde_json::Map::new();
                 if let Some(text) = text {
-                    obj.insert("text".to_string(), text.into_json());
+                    obj.insert("text".to_string(), text.into());
                 }
                 if let Some(url) = url {
-                    obj.insert("url".to_string(), url.into_json());
+                    obj.insert("url".to_string(), url.into());
                 }
                 if let Some(file) = file {
-                    obj.insert("file".to_string(), file.into_json());
+                    obj.insert("file".to_string(), file.into());
                 }
                 if let Some(auto) = auto {
-                    obj.insert("auto".to_string(), auto.into_json());
+                    obj.insert("auto".to_string(), auto.into());
                 }
                 Value::Object(obj)
             }
@@ -497,6 +578,18 @@ pub struct TypedActionBuilder<'a> {
     auto: Option<Arg<'a>>,
 }
 
+impl<'a> From<TypedActionBuilder<'a>> for Action<'a> {
+    /// Return the action object built.
+    fn from(value: TypedActionBuilder<'a>) -> Self {
+        Self::Typed {
+            text: value.text,
+            url: value.url,
+            file: value.file,
+            auto: value.auto,
+        }
+    }
+}
+
 impl<'a> TypedActionBuilder<'a> {
     pub fn new() -> Self {
         Self {
@@ -504,16 +597,6 @@ impl<'a> TypedActionBuilder<'a> {
             url: None,
             file: None,
             auto: None,
-        }
-    }
-
-    /// Return the action object built.
-    pub fn into_action(self) -> Action<'a> {
-        Action::Typed {
-            text: self.text,
-            url: self.url,
-            file: self.file,
-            auto: self.auto,
         }
     }
 
@@ -544,13 +627,13 @@ pub struct Text<'a> {
     largetype: Option<Cow<'a, str>>,
 }
 
-impl<'a> IntoJson for Text<'a> {
-    fn into_json(self) -> Value {
+impl<'a> From<Text<'a>> for Value {
+    fn from(value: Text<'a>) -> Self {
         let mut obj = serde_json::Map::new();
-        if let Some(copy) = self.copy {
+        if let Some(copy) = value.copy {
             obj.insert("copy".to_string(), json!(copy));
         }
-        if let Some(largetype) = self.largetype {
+        if let Some(largetype) = value.largetype {
             obj.insert("largetype".to_string(), json!(largetype));
         }
         Value::Object(obj)
@@ -581,10 +664,12 @@ impl<'a> TextBuilder<'a> {
         self.text.largetype = Some(largetype.into());
         self
     }
+}
 
+impl<'a> From<TextBuilder<'a>> for Text<'a> {
     /// Return the text built.
-    pub fn into_text(self) -> Text<'a> {
-        self.text
+    fn from(value: TextBuilder<'a>) -> Self {
+        value.text
     }
 }
 
@@ -604,61 +689,70 @@ pub struct Item<'a> {
     action: Option<Action<'a>>,
     text: Option<Text<'a>>,
     quicklookurl: Option<Cow<'a, str>>,
-    variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
+    variables: Variables<'a>,
 }
 
-impl<'a> IntoJson for HashMap<ModifiersComb, ModifierData<'a>> {
-    fn into_json(self) -> Value {
-        let mut obj = serde_json::Map::with_capacity(self.len());
-        for (key, value) in self.into_iter() {
-            obj.insert(key.to_string(), value.into_json());
+struct HashMapWrapperModifier<'a>(HashMap<ModifiersComb, ModifierData<'a>>);
+
+impl<'a> From<HashMapWrapperModifier<'a>> for Value {
+    fn from(value: HashMapWrapperModifier<'a>) -> Self {
+        let value = value.0;
+        let mut obj = serde_json::Map::with_capacity(value.len());
+        for (key, value) in value.into_iter() {
+            obj.insert(key.to_string(), value.into());
         }
         Value::Object(obj)
     }
 }
 
-impl<'a> IntoJson for Item<'a> {
-    fn into_json(self) -> Value {
+impl<'a> From<Item<'a>> for Value {
+    fn from(value: Item<'a>) -> Self {
         let mut obj = serde_json::Map::new();
-        obj.insert("title".to_string(), json!(self.title));
-        if let Some(uid) = self.uid {
+        obj.insert("title".to_string(), json!(value.title));
+        if let Some(uid) = value.uid {
             obj.insert("uid".to_string(), json!(uid));
         }
-        if let Some(subtitle) = self.subtitle {
+        if let Some(subtitle) = value.subtitle {
             obj.insert("subtitle".to_string(), json!(subtitle));
         }
-        if let Some(arg) = self.arg {
-            obj.insert("arg".to_string(), arg.into_json());
+        if let Some(arg) = value.arg {
+            obj.insert("arg".to_string(), arg.into());
         }
-        if let Some(icon) = self.icon {
-            obj.insert("icon".to_string(), icon.into_json());
+        if let Some(icon) = value.icon {
+            obj.insert("icon".to_string(), icon.into());
         }
-        if let Some(valid) = self.valid {
+        if let Some(valid) = value.valid {
             obj.insert("valid".to_string(), json!(valid));
         }
-        if let Some(match_) = self.match_ {
-            obj.insert("match".to_string(), match_.into_json());
+        if let Some(match_) = value.match_ {
+            obj.insert("match".to_string(), match_.into());
         }
-        if let Some(autocomplete) = self.autocomplete {
+        if let Some(autocomplete) = value.autocomplete {
             obj.insert("autocomplete".to_string(), json!(autocomplete));
         }
-        if let Some(type_) = self.type_ {
-            obj.insert("type".to_string(), type_.into_json());
+        if let Some(type_) = value.type_ {
+            obj.insert("type".to_string(), type_.into());
         }
-        if !self.mods.is_empty() {
-            obj.insert("mods".to_string(), self.mods.into_json());
+        if !value.mods.is_empty() {
+            obj.insert(
+                "mods".to_string(),
+                HashMapWrapperModifier(value.mods).into(),
+            );
         }
-        if let Some(action) = self.action {
-            obj.insert("action".to_string(), action.into_json());
+        if let Some(action) = value.action {
+            obj.insert("action".to_string(), action.into());
         }
-        if let Some(text) = self.text {
-            obj.insert("text".to_string(), text.into_json());
+        if let Some(text) = value.text {
+            obj.insert("text".to_string(), text.into());
         }
-        if let Some(quicklookurl) = self.quicklookurl {
+        if let Some(quicklookurl) = value.quicklookurl {
             obj.insert("quicklookurl".to_string(), json!(quicklookurl));
         }
-        if !self.variables.is_empty() {
-            obj.insert("variables".to_string(), self.variables.into_json());
+        if !value.variables.is_empty() {
+            obj.insert(
+                "variables".to_string(),
+                HashMapWrapperVariables(value.variables).into(),
+            );
         }
         Value::Object(obj)
     }
@@ -667,6 +761,13 @@ impl<'a> IntoJson for Item<'a> {
 /// Builder for an Item.
 pub struct ItemBuilder<'a> {
     item: Item<'a>,
+}
+
+impl<'a> From<ItemBuilder<'a>> for Item<'a> {
+    /// Return the item built.
+    fn from(value: ItemBuilder<'a>) -> Self {
+        value.item
+    }
 }
 
 impl<'a> ItemBuilder<'a> {
@@ -690,11 +791,6 @@ impl<'a> ItemBuilder<'a> {
                 variables: HashMap::new(),
             },
         }
-    }
-
-    /// Return the item built.
-    pub fn into_item(self) -> Item<'a> {
-        self.item
     }
 
     pub fn set_uid<S: Into<Cow<'a, str>>>(&mut self, uid: S) {
@@ -864,18 +960,11 @@ impl<'a> ItemBuilder<'a> {
         self
     }
 
-    pub fn set_variables(
-        &mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) {
-        self.item.variables.clear();
-        self.item.variables.extend(variables);
+    pub fn set_variables(&mut self, variables: Variables<'a>) {
+        self.item.variables = variables;
     }
 
-    pub fn variables(
-        mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) -> Self {
+    pub fn variables(mut self, variables: Variables<'a>) -> Self {
         self.set_variables(variables);
         self
     }
@@ -884,24 +973,25 @@ impl<'a> ItemBuilder<'a> {
 pub struct ScriptFilterOutput<'a> {
     items: Vec<Item<'a>>,
     /// Item variables
-    variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
+    variables: Variables<'a>,
     /// Rerun script filters
     rerun: Option<f32>,
 }
 
-impl<'a> IntoJson for ScriptFilterOutput<'a> {
-    fn into_json(self) -> Value {
+impl<'a> From<ScriptFilterOutput<'a>> for Value {
+    fn from(value: ScriptFilterOutput<'a>) -> Self {
         let mut obj = serde_json::Map::new();
         obj.insert(
             "items".to_string(),
-            Value::Array(
-                self.items.into_iter().map(IntoJson::into_json).collect(),
-            ),
+            Value::Array(value.items.into_iter().map(Into::into).collect()),
         );
-        if !self.variables.is_empty() {
-            obj.insert("variables".to_string(), self.variables.into_json());
+        if !value.variables.is_empty() {
+            obj.insert(
+                "variables".to_string(),
+                HashMapWrapperVariables(value.variables).into(),
+            );
         }
-        if let Some(rerun) = self.rerun {
+        if let Some(rerun) = value.rerun {
             obj.insert("rerun".to_string(), json!(rerun));
         }
         Value::Object(obj)
@@ -909,8 +999,25 @@ impl<'a> IntoJson for ScriptFilterOutput<'a> {
 }
 
 /// Builder for `ScriptFilterOutput`.
+///
+/// Example:
+///
+/// ```
+/// use alfred_json::scriptfilter::{ItemBuilder, ScriptFilterOutput, ScriptFilterOutputBuilder};
+/// let sf: ScriptFilterOutput = ScriptFilterOutputBuilder::from([
+///     ItemBuilder::new("foo").into(),
+///     ItemBuilder::new("bar").into(),
+/// ]).into();
+/// ```
 pub struct ScriptFilterOutputBuilder<'a> {
     resp: ScriptFilterOutput<'a>,
+}
+
+impl<'a> From<ScriptFilterOutputBuilder<'a>> for ScriptFilterOutput<'a> {
+    /// Return the output built.
+    fn from(value: ScriptFilterOutputBuilder<'a>) -> Self {
+        value.resp
+    }
 }
 
 impl<'a> ScriptFilterOutputBuilder<'a> {
@@ -924,38 +1031,11 @@ impl<'a> ScriptFilterOutputBuilder<'a> {
         }
     }
 
-    pub fn from_items<I: IntoIterator<Item = Item<'a>>>(items: I) -> Self {
-        Self {
-            resp: ScriptFilterOutput {
-                items: items.into_iter().collect(),
-                variables: HashMap::new(),
-                rerun: None,
-            },
-        }
+    pub fn set_variables(&mut self, variables: Variables<'a>) {
+        self.resp.variables = variables;
     }
 
-    pub fn from_item(item: Item<'a>) -> Self {
-        Self {
-            resp: ScriptFilterOutput {
-                items: vec![item],
-                variables: HashMap::new(),
-                rerun: None,
-            },
-        }
-    }
-
-    pub fn set_variables(
-        &mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) {
-        self.resp.variables.clear();
-        self.resp.variables.extend(variables);
-    }
-
-    pub fn variables(
-        mut self,
-        variables: HashMap<Cow<'a, str>, Cow<'a, str>>,
-    ) -> Self {
+    pub fn variables(mut self, variables: Variables<'a>) -> Self {
         self.set_variables(variables);
         self
     }
@@ -972,10 +1052,110 @@ impl<'a> ScriptFilterOutputBuilder<'a> {
         self.set_rerun(rerun);
         self
     }
+}
 
-    /// Return the output built.
-    pub fn into_output(self) -> ScriptFilterOutput<'a> {
-        self.resp
+impl<'a> From<Item<'a>> for ScriptFilterOutputBuilder<'a> {
+    fn from(value: Item<'a>) -> Self {
+        Self {
+            resp: ScriptFilterOutput {
+                items: vec![value],
+                variables: HashMap::new(),
+                rerun: None,
+            },
+        }
+    }
+}
+
+impl<'a, I> From<I> for ScriptFilterOutputBuilder<'a>
+where
+    I: IntoIterator<Item = Item<'a>>,
+{
+    fn from(value: I) -> Self {
+        Self {
+            resp: ScriptFilterOutput {
+                items: value.into_iter().collect(),
+                variables: HashMap::new(),
+                rerun: None,
+            },
+        }
+    }
+}
+
+/// The JSON config object.
+pub struct JsonConfig<'a> {
+    arg: Option<Arg<'a>>,
+    variables: Variables<'a>,
+}
+
+impl<'a> From<JsonConfig<'a>> for Value {
+    fn from(value: JsonConfig<'a>) -> Self {
+        let mut obj = serde_json::Map::new();
+        if let Some(arg) = value.arg {
+            obj.insert("arg".to_string(), arg.into());
+        }
+        if !value.variables.is_empty() {
+            obj.insert(
+                "variables".to_string(),
+                HashMapWrapperVariables(value.variables).into(),
+            );
+        }
+        Value::Object(serde_json::Map::from_iter([(
+            "alfredworkflow".to_string(),
+            Value::Object(obj),
+        )]))
+    }
+}
+
+/// Builder for `JsonConfig`.
+///
+/// Example:
+///
+/// ```
+/// use alfred_json::scriptfilter::{ArgBuilder, JsonConfig, JsonConfigBuilder};
+/// let config: JsonConfig = JsonConfigBuilder::new()
+///     .arg(ArgBuilder::one("foo").into())
+///     .into();
+/// ```
+pub struct JsonConfigBuilder<'a> {
+    config: JsonConfig<'a>,
+}
+
+impl<'a> From<JsonConfigBuilder<'a>> for JsonConfig<'a> {
+    fn from(value: JsonConfigBuilder<'a>) -> Self {
+        value.config
+    }
+}
+
+impl<'a> JsonConfigBuilder<'a> {
+    pub fn new() -> Self {
+        Self {
+            config: JsonConfig {
+                arg: None,
+                variables: HashMap::new(),
+            },
+        }
+    }
+
+    pub fn set_arg(&mut self, arg: Arg<'a>) {
+        self.config.arg = Some(arg);
+    }
+
+    pub fn unset_arg(&mut self) {
+        self.config.arg = None;
+    }
+
+    pub fn arg(mut self, arg: Arg<'a>) -> Self {
+        self.set_arg(arg);
+        self
+    }
+
+    pub fn set_variables(&mut self, variables: Variables<'a>) {
+        self.config.variables = variables;
+    }
+
+    pub fn variables(mut self, variables: Variables<'a>) -> Self {
+        self.set_variables(variables);
+        self
     }
 }
 
