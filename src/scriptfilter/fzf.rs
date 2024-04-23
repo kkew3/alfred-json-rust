@@ -20,6 +20,7 @@ use crate::Arg;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// Errors while requesting `fzf`.
@@ -111,10 +112,10 @@ fn request_fzf(
     fzf_argv.push(query);
 
     // Prepare stdin to fzf
-    let mut stdin = String::new();
+    let mut message = String::new();
     for key in candidates.keys() {
-        stdin.push_str(key);
-        stdin.push('\n');
+        message.push_str(key);
+        message.push('\n');
     }
 
     let process_output = |lines| -> Result<Vec<usize>, FzfError> {
@@ -131,22 +132,31 @@ fn request_fzf(
 
     match Command::new("fzf")
         .args(fzf_argv)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .spawn()
     {
         Err(_) => Err(FzfError::Launch),
-        Ok(proc) => match proc.status.code() {
-            None => Err(FzfError::SigTerm),
-            Some(code) => match code {
-                0 => process_output(
-                    String::from_utf8(proc.stdout)
-                        .map_err(|_| FzfError::Parse)?
-                        .lines(),
-                ),
-                1 => Ok(Vec::new()),
-                _ => Err(FzfError::ErrCode(code)),
-            },
-        },
+        Ok(mut proc) => {
+            let mut stdin = proc.stdin.take().unwrap();
+            std::thread::spawn(move || {
+                stdin.write_all(message.as_bytes()).unwrap()
+            });
+            let proc = proc.wait_with_output().unwrap();
+            match proc.status.code() {
+                None => Err(FzfError::SigTerm),
+                Some(code) => match code {
+                    0 => process_output(
+                        String::from_utf8(proc.stdout)
+                            .map_err(|_| FzfError::Parse)?
+                            .lines(),
+                    ),
+                    1 => Ok(Vec::new()),
+                    _ => Err(FzfError::ErrCode(code)),
+                },
+            }
+        }
     }
 }
 
@@ -196,4 +206,21 @@ pub fn fzf_filter<'a>(
     items.retain(|_| *keep_iter.next().unwrap());
 
     Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::fzf::fzf_filter;
+    use crate::{Builder, ItemBuilder};
+
+    #[test]
+    fn test_fzf_filter() {
+        let items = vec![
+            ItemBuilder::new("foo").into_output(),
+            ItemBuilder::new("bar").into_output(),
+        ];
+        let items = fzf_filter("foo", items, true).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items.get(0).unwrap().title, "foo");
+    }
 }
