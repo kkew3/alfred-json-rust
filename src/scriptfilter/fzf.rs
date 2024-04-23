@@ -1,8 +1,8 @@
 //! Item filtering through [`fzf`](https://github.com/junegunn/fzf) (require
 //! `fzf` to be installed locally).
-//! 
+//!
 //! Example:
-//! 
+//!
 //! ```
 //! use alfred_json::{Item, ItemBuilder};
 //! use alfred_json::fzf::fzf_filter;
@@ -13,11 +13,13 @@
 //! ];
 //! let foo: Vec<Item> = fzf_filter("foo", items, true).unwrap();
 //! ```
-//! 
+//!
 
 use crate::scriptfilter::Item;
 use crate::Arg;
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::process::{Command, Stdio};
 
 /// Errors while requesting `fzf`.
@@ -49,6 +51,44 @@ impl<T> Context<T> for Option<T> {
     }
 }
 
+/// `HashMap` that remembers the insertion order. The key must implement the
+/// `Copy` trait.
+struct OrderedHashMap<K, V> {
+    map: HashMap<K, V>,
+    order: Vec<K>,
+}
+
+impl<K: Copy + Eq + Hash, V> OrderedHashMap<K, V> {
+    fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            order: Vec::new(),
+        }
+    }
+
+    fn insert(&mut self, k: K, v: V) -> Option<V> {
+        match self.map.insert(k, v) {
+            Some(v) => Some(v),
+            None => {
+                self.order.push(k);
+                None
+            }
+        }
+    }
+
+    fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.map.get(k)
+    }
+
+    fn keys(&self) -> Vec<K> {
+        self.order.iter().map(|k| *k).collect()
+    }
+}
+
 /// Return a Vec of unique selected indices, or `FzfError` if any error occurs.
 ///
 /// Arguments:
@@ -59,7 +99,7 @@ impl<T> Context<T> for Option<T> {
 ///
 fn request_fzf(
     query: &str,
-    candidates: HashMap<&str, usize>,
+    candidates: OrderedHashMap<&str, usize>,
     exact: bool,
 ) -> Result<Vec<usize>, FzfError> {
     // Prepare fzf argv
@@ -72,7 +112,7 @@ fn request_fzf(
 
     // Prepare stdin to fzf
     let mut stdin = String::new();
-    for (key, _) in candidates.iter() {
+    for key in candidates.keys() {
         stdin.push_str(key);
         stdin.push('\n');
     }
@@ -112,8 +152,8 @@ fn request_fzf(
 
 fn parse_items_into_candidates<'a>(
     items: &'a [Item<'a>],
-) -> Result<HashMap<&'a str, usize>, FzfError> {
-    let mut candidates = HashMap::new();
+) -> Result<OrderedHashMap<&'a str, usize>, FzfError> {
+    let mut candidates = OrderedHashMap::new();
     for (j, item) in items.into_iter().enumerate() {
         let match_strs: Vec<&'a str> = match item.match_ {
             None => vec![item.title.as_ref()],
@@ -128,7 +168,7 @@ fn parse_items_into_candidates<'a>(
             }
         }
     }
-    Ok(candidates.into())
+    Ok(candidates)
 }
 
 /// Request `fzf` to fuzzy filter items with query. For each `item`, the match

@@ -188,9 +188,12 @@ impl<T: Into<Value>> IntoJson for T {}
 /// // Don't need type annotation on `icon`:
 /// let icon = IconBuilder::path("/path/to/icon").into_output();
 /// ```
-pub trait Builder where Self: Sized {
+pub trait Builder
+where
+    Self: Sized,
+{
     type Output: From<Self>;
-    
+
     /// Get the built object.
     fn into_output(self) -> Self::Output {
         self.into()
