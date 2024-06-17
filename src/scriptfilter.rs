@@ -461,6 +461,48 @@ pub struct ModifierData<'a> {
     variables: Variables<'a>,
 }
 
+impl<'a> ModifierData<'a> {
+    pub fn get_subtitle(&self) -> Option<&str> {
+        self.subtitle.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_subtitle_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.subtitle.as_mut()
+    }
+
+    pub fn get_arg(&self) -> Option<&Arg<'a>> {
+        self.arg.as_ref()
+    }
+
+    pub fn get_arg_mut(&mut self) -> Option<&mut Arg<'a>> {
+        self.arg.as_mut()
+    }
+
+    pub fn get_valid(&self) -> Option<&bool> {
+        self.valid.as_ref()
+    }
+
+    pub fn get_valid_mut(&mut self) -> Option<&mut bool> {
+        self.valid.as_mut()
+    }
+
+    pub fn get_icon(&self) -> Option<&Icon<'a>> {
+        self.icon.as_ref()
+    }
+
+    pub fn get_icon_mut(&mut self) -> Option<&mut Icon<'a>> {
+        self.icon.as_mut()
+    }
+
+    pub fn get_variables(&self) -> &Variables<'a> {
+        &self.variables
+    }
+
+    pub fn get_variables_mut(&mut self) -> &mut Variables<'a> {
+        &mut self.variables
+    }
+}
+
 impl<'a> From<ModifierData<'a>> for Value {
     fn from(value: ModifierData<'a>) -> Self {
         let mut map = serde_json::Map::new();
@@ -676,6 +718,24 @@ pub struct Text<'a> {
     largetype: Option<Cow<'a, str>>,
 }
 
+impl<'a> Text<'a> {
+    pub fn get_copy(&self) -> Option<&str> {
+        self.copy.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_copy_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.copy.as_mut()
+    }
+
+    pub fn get_largetype(&self) -> Option<&str> {
+        self.largetype.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_largetype_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.largetype.as_mut()
+    }
+}
+
 impl<'a> From<Text<'a>> for Value {
     fn from(value: Text<'a>) -> Self {
         let mut obj = serde_json::Map::new();
@@ -743,6 +803,122 @@ pub struct Item<'a> {
     text: Option<Text<'a>>,
     quicklookurl: Option<Cow<'a, str>>,
     variables: Variables<'a>,
+}
+
+impl<'a> Item<'a> {
+    pub fn get_uid(&self) -> Option<&str> {
+        self.uid.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_uid_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.uid.as_mut()
+    }
+
+    pub fn get_title(&self) -> &str {
+        self.title.as_ref()
+    }
+
+    pub fn get_title_mut(&mut self) -> &mut Cow<'a, str> {
+        &mut self.title
+    }
+
+    pub fn get_subtitle(&self) -> Option<&str> {
+        self.subtitle.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_subtitle_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.subtitle.as_mut()
+    }
+
+    pub fn get_arg(&self) -> Option<&Arg<'a>> {
+        self.arg.as_ref()
+    }
+
+    pub fn get_arg_mut(&mut self) -> Option<&mut Arg<'a>> {
+        self.arg.as_mut()
+    }
+
+    pub fn get_icon(&self) -> Option<&Icon<'a>> {
+        self.icon.as_ref()
+    }
+
+    pub fn get_icon_mut(&mut self) -> Option<&mut Icon<'a>> {
+        self.icon.as_mut()
+    }
+
+    pub fn get_valid(&self) -> Option<&bool> {
+        self.valid.as_ref()
+    }
+
+    pub fn get_valid_mut(&mut self) -> Option<&mut bool> {
+        self.valid.as_mut()
+    }
+
+    pub fn get_match(&self) -> Option<&Arg<'a>> {
+        self.match_.as_ref()
+    }
+
+    pub fn get_match_mut(&mut self) -> Option<&mut Arg<'a>> {
+        self.match_.as_mut()
+    }
+
+    pub fn get_autocomplete(&self) -> Option<&str> {
+        self.autocomplete.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_autocomplete_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.autocomplete.as_mut()
+    }
+
+    pub fn get_type(&self) -> Option<&ItemType> {
+        self.type_.as_ref()
+    }
+
+    pub fn get_type_mut(&mut self) -> Option<&mut ItemType> {
+        self.type_.as_mut()
+    }
+
+    pub fn get_mods(&self) -> &HashMap<ModifiersComb, ModifierData<'a>> {
+        &self.mods
+    }
+
+    pub fn get_mods_mut(
+        &mut self,
+    ) -> &mut HashMap<ModifiersComb, ModifierData<'a>> {
+        &mut self.mods
+    }
+
+    pub fn get_action(&self) -> Option<&Action<'a>> {
+        self.action.as_ref()
+    }
+
+    pub fn get_action_mut(&mut self) -> Option<&mut Action<'a>> {
+        self.action.as_mut()
+    }
+
+    pub fn get_text(&self) -> Option<&Text<'a>> {
+        self.text.as_ref()
+    }
+
+    pub fn get_text_mut(&mut self) -> Option<&mut Text<'a>> {
+        self.text.as_mut()
+    }
+
+    pub fn get_quicklookurl(&self) -> Option<&str> {
+        self.quicklookurl.as_ref().map(Cow::as_ref)
+    }
+
+    pub fn get_quicklookurl_mut(&mut self) -> Option<&mut Cow<'a, str>> {
+        self.quicklookurl.as_mut()
+    }
+
+    pub fn get_variables(&self) -> &Variables<'a> {
+        &self.variables
+    }
+
+    pub fn get_variables_mut(&mut self) -> &mut Variables<'a> {
+        &mut self.variables
+    }
 }
 
 struct HashMapWrapperModifier<'a>(HashMap<ModifiersComb, ModifierData<'a>>);
