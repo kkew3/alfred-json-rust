@@ -34,8 +34,6 @@ pub enum FzfError {
     SigTerm,
     /// Failed to parse the output of `fzf`.
     Parse,
-    /// Duplicate match strings detected.
-    DuplicateKey,
 }
 
 /// A simple port of `anyhow::Context` here for convenience.
@@ -52,41 +50,34 @@ impl<T> Context<T> for Option<T> {
     }
 }
 
-/// `HashMap` that remembers the insertion order. The key must implement the
-/// `Copy` trait.
-struct OrderedHashMap<K, V> {
-    map: HashMap<K, V>,
-    order: Vec<K>,
-}
+/// Map key to some positions. Duplicate keys are allowed.
+struct PositionMap<K>(HashMap<K, Vec<usize>>);
 
-impl<K: Copy + Eq + Hash, V> OrderedHashMap<K, V> {
+impl<K> PositionMap<K> {
     fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-            order: Vec::new(),
-        }
+        Self(HashMap::new())
     }
 
-    fn insert(&mut self, k: K, v: V) -> Option<V> {
-        match self.map.insert(k, v) {
-            Some(v) => Some(v),
-            None => {
-                self.order.push(k);
-                None
-            }
-        }
-    }
-
-    fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    fn insert(&mut self, k: K, v: usize)
     where
-        K: Borrow<Q>,
+        K: Copy + Eq + Hash,
+    {
+        self.0.entry(k).or_default().push(v);
+    }
+
+    fn get<Q: ?Sized>(&self, k: &Q) -> Option<&[usize]>
+    where
+        K: Borrow<Q> + Eq + Hash,
         Q: Hash + Eq,
     {
-        self.map.get(k)
+        self.0.get(k).map(Vec::as_ref)
     }
 
-    fn keys(&self) -> Vec<K> {
-        self.order.iter().map(|k| *k).collect()
+    fn keys(&self) -> impl Iterator<Item = K> + '_
+    where
+        K: Copy,
+    {
+        self.0.keys().map(|k| *k)
     }
 }
 
@@ -100,9 +91,9 @@ impl<K: Copy + Eq + Hash, V> OrderedHashMap<K, V> {
 ///
 fn request_fzf(
     query: &str,
-    candidates: OrderedHashMap<&str, usize>,
+    candidates: PositionMap<&str>,
     exact: bool,
-) -> Result<Vec<usize>, FzfError> {
+) -> Result<HashSet<usize>, FzfError> {
     // Prepare fzf argv
     let mut fzf_argv = Vec::new();
     if exact {
@@ -118,14 +109,11 @@ fn request_fzf(
         message.push('\n');
     }
 
-    let process_output = |lines| -> Result<Vec<usize>, FzfError> {
-        let mut uniq = Vec::new();
-        let mut uniq_set = HashSet::new();
+    let process_output = |lines| -> Result<HashSet<usize>, FzfError> {
+        let mut uniq = HashSet::new();
         for line in lines {
-            let index = candidates.get(line).context(FzfError::Parse)?;
-            if uniq_set.insert(*index) {
-                uniq.push(*index);
-            }
+            let ind = candidates.get(line).context(FzfError::Parse)?;
+            uniq.extend(ind);
         }
         Ok(uniq)
     };
@@ -152,7 +140,7 @@ fn request_fzf(
                             .map_err(|_| FzfError::Parse)?
                             .lines(),
                     ),
-                    1 => Ok(Vec::new()),
+                    1 => Ok(HashSet::new()),
                     _ => Err(FzfError::ErrCode(code)),
                 },
             }
@@ -162,10 +150,10 @@ fn request_fzf(
 
 fn parse_items_into_candidates<'a>(
     items: &'a [Item<'a>],
-) -> Result<OrderedHashMap<&'a str, usize>, FzfError> {
-    let mut candidates = OrderedHashMap::new();
+) -> Result<PositionMap<&'a str>, FzfError> {
+    let mut candidates = PositionMap::new();
     for (j, item) in items.into_iter().enumerate() {
-        let match_strs: Vec<&'a str> = match item.match_ {
+        let match_strs: Vec<&str> = match item.match_ {
             None => vec![item.title.as_ref()],
             Some(ref arg) => match arg {
                 Arg::One(a) => vec![a],
@@ -173,9 +161,7 @@ fn parse_items_into_candidates<'a>(
             },
         };
         for s in match_strs {
-            if candidates.insert(s, j).is_some() {
-                return Err(FzfError::DuplicateKey);
-            }
+            candidates.insert(s, j);
         }
     }
     Ok(candidates)
@@ -211,16 +197,55 @@ pub fn fzf_filter<'a>(
 #[cfg(test)]
 mod tests {
     use crate::fzf::fzf_filter;
-    use crate::{Builder, ItemBuilder};
+    use crate::scriptfilter::fzf::PositionMap;
+    use crate::{ArgBuilder, Builder, Item, ItemBuilder};
+
+    #[test]
+    fn test_ordered_position_map() {
+        let mut map = PositionMap::new();
+        map.insert("foo", 0);
+        map.insert("bar", 0);
+        map.insert("foo", 1);
+        map.insert("baz", 2);
+        assert_eq!(map.get("foo"), Some([0, 1].as_slice()));
+        assert_eq!(map.get("bar"), Some([0].as_slice()));
+        assert_eq!(map.get("baz"), Some([2].as_slice()));
+    }
 
     #[test]
     fn test_fzf_filter() {
-        let items = vec![
-            ItemBuilder::new("foo").into_output(),
-            ItemBuilder::new("bar").into_output(),
-        ];
-        let items = fzf_filter("foo", items, true).unwrap();
+        fn test_case1<'a>() -> Vec<Item<'a>> {
+            vec![
+                ItemBuilder::new("foo").into_output(),
+                ItemBuilder::new("bar").into_output(),
+            ]
+        }
+
+        let items = fzf_filter("foo", test_case1(), true).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items.get(0).unwrap().title, "foo");
+
+        fn test_case2<'a>() -> Vec<Item<'a>> {
+            vec![
+                ItemBuilder::new("a")
+                    .match_(ArgBuilder::many(["foo", "bar"]).into_output())
+                    .into_output(),
+                ItemBuilder::new("baz").into_output(),
+                ItemBuilder::new("c")
+                    .match_(ArgBuilder::many(["foo", "bar"]).into_output())
+                    .into_output(),
+            ]
+        }
+
+        let items = fzf_filter("ba", test_case2(), false).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items.get(0).unwrap().title, "a");
+        assert_eq!(items.get(1).unwrap().title, "baz");
+        assert_eq!(items.get(2).unwrap().title, "c");
+
+        let items = fzf_filter("bar", test_case2(), true).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items.get(0).unwrap().title, "a");
+        assert_eq!(items.get(1).unwrap().title, "c");
     }
 }
